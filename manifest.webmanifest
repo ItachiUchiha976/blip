@@ -1,0 +1,16 @@
+{
+  "name": "Blip — le jeu one-tap",
+  "short_name": "Blip",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0f22",
+  "theme_color": "#0a0f22",
+  "description": "Touche pour voler, passe les piliers néon, bats ton record. Un doigt, mort instantanée, une-partie-de-plus garantie.",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
