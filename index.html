@@ -46,6 +46,7 @@
   .skip{color:#93a4cc;font-size:13px;margin-top:6px}
   .adbar{position:fixed;bottom:0;left:0;right:0;height:52px;display:flex;align-items:center;justify-content:center;border-top:1px solid #2b3d68;background:rgba(6,10,24,.72);color:#93a4cc;font-size:12px;z-index:4;pointer-events:none}
   .adbar .slot{border:1px dashed #2b3d68;border-radius:10px;padding:7px 14px}
+  body.native .adbar{display:none}
 </style>
 </head>
 <body>
@@ -61,7 +62,18 @@
         <div class="sbox best"><div class="k">RECORD</div><div class="v" id="best0">0</div></div>
       </div>
       <button class="btn" id="startBtn">Jouer ▶</button>
+      <button class="btn sec" id="premBtn" style="margin-top:10px">✨ Supprimer les pubs</button>
       <div class="tap">…ou touche l'écran</div>
+    </div>
+  </div>
+
+  <!-- PREMIUM -->
+  <div class="ov" id="premOv">
+    <div class="card">
+      <h1 style="font-size:36px">✨ Sans pub</h1>
+      <div class="tag">Supprime <b style="color:#7ce7ff">définitivement</b> toutes les publicités.<br>Un seul paiement, à vie.</div>
+      <button class="btn" id="premBuy">Passer sans pub</button>
+      <button class="btn sec" id="premClose">Plus tard</button>
     </div>
   </div>
 
@@ -107,6 +119,7 @@
   var $=function(id){return document.getElementById(id);};
   function load(k,d){try{var v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}}
   var best=load('blip_best',0), deaths=0;
+  var noAds=load('blip_premium',0);
   var AD_EVERY=3;
   var PROMOS=[
     {emo:'🌙',h:'Lampe Lune en lévitation',p:'L\'objet déco qui hypnotise. Curiosa.',u:'https://curiosaboutique.fr'},
@@ -146,6 +159,7 @@
   function start(){
     reset(); state='play'; $('score').style.display='block';
     $('startOv').classList.remove('show'); $('deadOv').classList.remove('show');
+    hideMenuBanner();   // pas de bannière pendant le jeu
     flap();
   }
   function flap(){ if(state!=='play')return; orb.vy=FLAP; sFlap(); vib(6);
@@ -165,7 +179,7 @@
 
   var adOpen=false;
   function retry(){ if(adOpen)return;
-    if(deaths>0 && deaths%AD_EVERY===0){ showAd(start); } else { start(); } }
+    if(deaths>0 && deaths%AD_EVERY===0){ showInterstitial(start); } else { start(); } }
 
   /* ---- death ---- */
   function die(){
@@ -176,7 +190,7 @@
     $('finalScore').textContent=score; $('bestScore').textContent=best; $('best0').textContent=best;
     $('newBest').style.display=nb?'block':'none';
     $('score').style.display='none';
-    setTimeout(function(){ $('deadOv').classList.add('show'); }, 480);
+    setTimeout(function(){ $('deadOv').classList.add('show'); showMenuBanner(); }, 480);
   }
 
   /* ---- pillars ---- */
@@ -272,8 +286,37 @@
     draw(); requestAnimationFrame(frame);
   }
 
-  /* ---- interstitial ---- */
-  function showAd(after){ adOpen=true;
+  /* ---- AdMob natif (repli house-ad web) ---- */
+  var Cap=window.Capacitor;
+  var isNative=!!(Cap && Cap.isNativePlatform && Cap.isNativePlatform());
+  var AdMob=(isNative && Cap.Plugins)?Cap.Plugins.AdMob:null;
+  var AD_BANNER='ca-app-pub-3940256099942544/6300978111';   // TEST
+  var AD_INTER='ca-app-pub-3940256099942544/1033173712';     // TEST
+  var interReady=false, pendingAfter=null, bannerShown=false;
+  function adInit(){
+    if(!AdMob || noAds) return;
+    AdMob.initialize({initializeForTesting:true}).then(function(){
+      try{ AdMob.addListener('interstitialAdDismissed',onInterClosed); }catch(e){}
+      try{ AdMob.addListener('interstitialAdFailedToShow',onInterClosed); }catch(e){}
+      prepInter(); showMenuBanner();
+    }).catch(function(){});
+  }
+  function prepInter(){ if(!AdMob)return; AdMob.prepareInterstitial({adId:AD_INTER,isTesting:true}).then(function(){interReady=true;}).catch(function(){interReady=false;}); }
+  function onInterClosed(){ interReady=false; prepInter(); var a=pendingAfter; pendingAfter=null; if(a)a(); }
+  function showInterstitial(after){
+    if(noAds){ after&&after(); return; }
+    if(AdMob && interReady){ pendingAfter=after; AdMob.showInterstitial().catch(function(){ onInterClosed(); }); }
+    else houseAd(after);
+  }
+  // bannière affichée SEULEMENT sur les menus (start/dead), jamais pendant le jeu (n'empiète pas sur le gameplay)
+  function showMenuBanner(){ if(!AdMob || noAds || bannerShown) return; bannerShown=true;
+    AdMob.showBanner({adId:AD_BANNER,adSize:'ADAPTIVE_BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:true}).catch(function(){}); }
+  function hideMenuBanner(){ if(!AdMob || !bannerShown) return; bannerShown=false; try{AdMob.hideBanner();}catch(e){} }
+  function buyPremium(){ if(noAds) return; /* Google Play Billing à brancher à la publication */ }
+  function applyPremium(){ noAds=1; localStorage.setItem('blip_premium','1'); hideMenuBanner(); try{AdMob&&AdMob.removeBanner();}catch(e){} }
+
+  /* ---- interstitial house-ad (web + repli natif) ---- */
+  function houseAd(after){ adOpen=true;
     var p=PROMOS[Math.floor(Math.random()*PROMOS.length)];
     $('promo').innerHTML='<div class="emo">'+p.emo+'</div><div><h3>'+p.h+'</h3><p>'+p.p+'</p>'+
       '<a href="'+p.u+'" target="_blank" rel="noopener">Découvrir →</a></div>';
@@ -307,6 +350,23 @@
   /* ---- boot ---- */
   $('best0').textContent=best;
   reset(); state='ready';
+  // premium
+  $('premBtn').addEventListener('click',function(e){ e.stopPropagation(); $('premOv').classList.add('show'); });
+  $('premClose').addEventListener('click',function(e){ e.stopPropagation(); $('premOv').classList.remove('show'); });
+  $('premBuy').addEventListener('click',function(e){ e.stopPropagation(); $('premOv').classList.remove('show'); buyPremium(); });
+  if(noAds){ var pb=$('premBtn'); if(pb) pb.style.display='none'; }
+  // natif : bouton retour Android
+  if(isNative){
+    document.body.classList.add('native');
+    if(Cap.Plugins && Cap.Plugins.App){
+      Cap.Plugins.App.addListener('backButton', function(){
+        if($('premOv').classList.contains('show')){ $('premOv').classList.remove('show'); return; }
+        if(state==='play'){ die(); return; }   // retour pendant le jeu = fin de partie propre
+        try{ Cap.Plugins.App.minimizeApp(); }catch(e){ try{Cap.Plugins.App.exitApp();}catch(e2){} }
+      });
+    }
+  }
+  adInit();
   requestAnimationFrame(frame);
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(function(){}); }
 })();
