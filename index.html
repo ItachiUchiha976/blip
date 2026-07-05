@@ -187,6 +187,15 @@
   function buyPremium(){ if(noAds) return; /* Google Play Billing à brancher à la publication */ }
   function applyPremium(){ noAds=1; localStorage.setItem('blip_premium','1'); hideMenuBanner(); try{AdMob&&AdMob.removeBanner();}catch(e){} }
 
+  /* pub temporisée : une pub (~5 s) toutes les 30 min — non intrusive : jamais pendant une partie active, seulement sur menu ou écran de fin */
+  var timeAdDue=false;
+  function tryTimeAd(){
+    if(noAds || !timeAdDue || adOpen) return;
+    if(state!=='ready' && state!=='dead') return;   // jamais en pleine partie / décompte
+    timeAdDue=false; showInterstitial(null);
+  }
+  setInterval(function(){ if(!noAds){ timeAdDue=true; tryTimeAd(); } }, 30*60*1000);
+
   /* ---------- house-ad (repli) ---------- */
   var adOpen=false;
   function houseAd(after){ adOpen=true;
@@ -266,7 +275,7 @@
     $('newBest').style.display=nb?'block':'none';
     $('reviveBtn').style.display=(revived||noAds)?'none':'block';   // 1 seul revive/partie ; premium = pas de pub à regarder
     $('score').style.display='none'; deadReady=false;
-    setTimeout(function(){ $('deadOv').classList.add('show'); showMenuBanner(); deadReady=true; }, 500);
+    setTimeout(function(){ $('deadOv').classList.add('show'); showMenuBanner(); deadReady=true; tryTimeAd(); }, 500);
   }
   function doRevive(){
     pillars=pillars.filter(function(p){ return p.x > orb.x + PW*1.8; }); // dégage la voie
