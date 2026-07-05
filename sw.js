@@ -1,5 +1,5 @@
 /* Blip · service worker (network-first sur le HTML) */
-var CACHE = 'blip-v1';
+var CACHE = 'blip-v2';
 var ASSETS = ['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-512-maskable.png'];
 self.addEventListener('install', function(e){ self.skipWaiting();
   e.waitUntil(caches.open(CACHE).then(function(c){return c.addAll(ASSETS);}).catch(function(){})); });
