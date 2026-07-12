@@ -1,5 +1,5 @@
-/* Blip · service worker (network-first sur le HTML) */
-var CACHE = 'blip-v4';
+/* Blip · service worker — network-first partout (HTML + assets) pour ne jamais coincer une MAJ en cache */
+var CACHE = 'blip-v5';
 var ASSETS = ['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-512-maskable.png'];
 self.addEventListener('install', function(e){ self.skipWaiting();
   e.waitUntil(caches.open(CACHE).then(function(c){return c.addAll(ASSETS);}).catch(function(){})); });
@@ -9,12 +9,7 @@ self.addEventListener('fetch', function(e){
   var req=e.request; if(req.method!=='GET') return;
   var url=new URL(req.url); if(url.origin!==location.origin) return;
   var isDoc = req.mode==='navigate' || (req.headers.get('accept')||'').indexOf('text/html')>=0 || url.pathname.endsWith('/') || url.pathname.endsWith('index.html');
-  if(isDoc){
-    e.respondWith(fetch(req).then(function(res){ if(res&&res.status===200){var cp=res.clone();caches.open(CACHE).then(function(c){c.put(req,cp);});} return res; })
-      .catch(function(){ return caches.match(req).then(function(c){return c||caches.match('./index.html');}); }));
-    return;
-  }
-  e.respondWith(caches.match(req).then(function(cached){
-    var net=fetch(req).then(function(res){ if(res&&res.status===200){var cp=res.clone();caches.open(CACHE).then(function(c){c.put(req,cp);});} return res; }).catch(function(){return cached;});
-    return cached||net; }));
+  // network-first : on tente toujours le réseau d'abord, on ne retombe sur le cache qu'en cas d'échec (offline)
+  e.respondWith(fetch(req).then(function(res){ if(res&&res.status===200){var cp=res.clone();caches.open(CACHE).then(function(c){c.put(req,cp);});} return res; })
+    .catch(function(){ return caches.match(req).then(function(c){ return c || (isDoc ? caches.match('./index.html') : undefined); }); }));
 });

@@ -44,6 +44,12 @@
   .tap{margin-top:16px;color:#93a4cc;font-size:15px;animation:blink 1.2s ease-in-out infinite}
   @keyframes blink{0%,100%{opacity:.4}50%{opacity:1}}
   .newbest{color:#ffd257;font-weight:800;margin-bottom:6px;font-size:15px;letter-spacing:.5px}
+  .toast{position:fixed;left:50%;bottom:78px;transform:translateX(-50%) translateY(10px);background:#0f1a30;border:1px solid #2b3d68;color:#eaf2ff;padding:10px 18px;border-radius:12px;font-weight:700;font-size:14px;z-index:30;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;text-align:center;max-width:88vw}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  /* pub bannière : espace réservé pour ne JAMAIS cacher un bouton (natif = vraie bannière AdMob).
+     Les overlays sont en position:fixed → on réduit leur zone (bottom) plutôt que le padding du body (sans effet sur du fixed). */
+  body.native .ov{bottom:62px}
+  body.noads .adbar{display:none}
   /* interstitial */
   .adcard{background:linear-gradient(135deg,#20305a,#141f3e);border:1px solid #2b3d68;border-radius:16px;padding:20px;margin-bottom:14px}
   .adcard .lbl{font-size:11px;color:#93a4cc;letter-spacing:1px;text-align:left;margin-bottom:8px}
@@ -72,6 +78,7 @@
       </div>
       <button class="btn" id="startBtn">Jouer ▶</button>
       <button class="btn sec" id="premBtn">✨ Supprimer les pubs</button>
+      <button class="btn sec" id="shopBtn">🔵 Skins</button>
       <div class="tap">…ou touche l'écran</div>
     </div>
   </div>
@@ -80,9 +87,31 @@
   <div class="ov" id="premOv">
     <div class="card">
       <h1 style="font-size:36px">✨ Sans pub</h1>
-      <div class="tag">Supprime <b style="color:#7ce7ff">définitivement</b> toutes les publicités.<br>Un seul paiement, à vie.</div>
-      <button class="btn" id="premBuy">Passer sans pub</button>
+      <div class="tag">Supprime <b style="color:#7ce7ff">définitivement</b> toutes les publicités et débloque <b style="color:#7ce7ff">tous les skins</b>.<br>Un seul paiement, à vie — <b>3,49&nbsp;€</b>.</div>
+      <button class="btn" id="premBuy">Passer sans pub — 3,49 €</button>
       <button class="btn sec" id="premClose">Plus tard</button>
+    </div>
+  </div>
+
+  <!-- SHOP (skins de bille) -->
+  <div class="ov" id="shopOv">
+    <div class="card">
+      <h1 style="font-size:32px">🔵 Skins</h1>
+      <div class="tag">Personnalise ta bille avec tes pièces 🪙 <b id="shopCoins" style="color:#ffd257">0</b></div>
+      <div id="skinList" style="display:flex;flex-direction:column;gap:10px;margin:10px 0 16px"></div>
+      <button class="btn sec" id="shopAdBtn">🎬 Regarder une pub → +20 🪙</button>
+      <button class="btn sec" id="shopClose" style="margin-top:10px">Fermer</button>
+    </div>
+  </div>
+
+  <!-- RÉCOMPENSE QUOTIDIENNE -->
+  <div class="ov" id="dailyOv">
+    <div class="card">
+      <h1 style="font-size:32px">🎁 Récompense</h1>
+      <div class="tag" id="dailySub">Reviens chaque jour pour gagner plus de pièces !</div>
+      <div style="font-size:38px;font-weight:900;color:#ffd257;margin:2px 0 8px" id="dailyCoins">+10 🪙</div>
+      <div id="dailyStreakDots" style="font-size:16px;letter-spacing:3px;margin-bottom:16px;color:#93a4cc"></div>
+      <button class="btn" id="dailyClaim">Récupérer ▶</button>
     </div>
   </div>
 
@@ -97,6 +126,7 @@
         <div class="sbox best"><div class="k">RECORD</div><div class="v" id="bestScore">0</div></div>
         <div class="sbox coin"><div class="k">🪙 PIÈCES</div><div class="v" id="coinsRunEl">+0</div></div>
       </div>
+      <button class="btn sec" id="doubleCoinsBtn" style="display:none;color:#ffd257;border-color:#5a4a1e">🎬 Doubler mes pièces (+<span id="doubleAmt">0</span>)</button>
       <button class="btn revive" id="reviveBtn">▶ Continuer (pub gratuite)</button>
       <button class="btn" id="retryBtn">Rejouer ↻</button>
       <button class="btn sec" id="shareBtn">📸 Partager mon score</button>
@@ -115,6 +145,7 @@
     </div>
   </div>
 
+  <div class="toast" id="toast"></div>
   <div class="adbar"><div class="slot">🔵 Blip — emplacement bannière</div></div>
 
 <script>
@@ -140,6 +171,69 @@
     {emo:'🎯',h:'Discipline 30 — l\'app',p:'Transforme ta discipline en série 🔥',u:'https://focuslabboutique.fr/app/'},
     {emo:'🧪',h:'ColorFlow — le puzzle zen',p:'Verse, trie, vide ta tête. Gratuit.',u:'https://itachiuchiha976.github.io/colorflow/'}
   ];
+
+  /* ---------- toast ---------- */
+  var ttId; function toast(m){ var e=$('toast'); if(!e)return; e.innerHTML=m; e.classList.add('show'); clearTimeout(ttId); ttId=setTimeout(function(){e.classList.remove('show');},2000); }
+
+  /* ---------- skins de bille (achetés avec le total de pièces coinsTotal) ---------- */
+  var ownedSkins=load('blip_owned_skins',['default']);
+  var curSkin=load('blip_skin','default');
+  var coinsDoubled=false;
+  var SKINS=[
+    {id:'default',name:'Classique (couleur du décor)',cost:0,orb:null},
+    {id:'gold',   name:'Doré',      cost:80, orb:['#fff8e0','#ffe08a','#e8a93b']},
+    {id:'ruby',   name:'Rubis',     cost:150,orb:['#fff0f2','#ff8aa0','#e0304f']},
+    {id:'emerald',name:'Émeraude',  cost:150,orb:['#eafff5','#7ce7b0','#1fae72']},
+    {id:'chrome', name:'Chrome',    cost:220,orb:['#ffffff','#d7dfef','#7f90ac']}
+  ];
+  function refreshCoinUI(){ var a=$('coins0'); if(a)a.textContent=coinsTotal; var b=$('shopCoins'); if(b)b.textContent=coinsTotal; }
+  function skinOwned(id){ return !!noAds || id==='default' || ownedSkins.indexOf(id)>=0; }
+  function orbColors(th){ if(curSkin==='default') return th.orb; var sk=SKINS.filter(function(s){return s.id===curSkin;})[0]; return (sk&&sk.orb)?sk.orb:th.orb; }
+  function renderShop(){
+    var host=$('skinList'); if(!host) return; host.innerHTML='';
+    SKINS.forEach(function(sk){
+      var owned=skinOwned(sk.id);
+      var row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.05);border:1px solid #2b3d68;border-radius:14px;padding:10px 14px';
+      var dot=sk.orb?sk.orb[2]:'linear-gradient(135deg,#5adcff,#a99bff)';
+      var label=document.createElement('div'); label.style.cssText='text-align:left;font-weight:800;font-size:14px;display:flex;align-items:center;gap:8px';
+      label.innerHTML='<span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:'+dot+';box-shadow:0 0 8px rgba(255,255,255,.35);flex:0 0 auto"></span><span>'+sk.name+(sk.id===curSkin?' <span style="color:#37e08a">· actif</span>':'')+'</span>';
+      row.appendChild(label);
+      var btn=document.createElement('button'); btn.className='btn'; btn.style.cssText='width:auto;padding:9px 16px;font-size:13px;margin:0';
+      if(sk.id===curSkin){ btn.textContent='Actif'; btn.disabled=true; btn.style.opacity=.55; }
+      else if(owned){ btn.textContent='Choisir'; btn.onclick=function(){ curSkin=sk.id; localStorage.setItem('blip_skin',sk.id); renderShop(); toast('Skin appliqué ✨'); }; }
+      else { btn.textContent=sk.cost+' 🪙'; btn.onclick=function(){
+          if(coinsTotal<sk.cost){ toast('Pas assez de pièces 🪙'); return; }
+          coinsTotal-=sk.cost; localStorage.setItem('blip_coins',JSON.stringify(coinsTotal)); ownedSkins.push(sk.id); localStorage.setItem('blip_owned_skins',JSON.stringify(ownedSkins));
+          curSkin=sk.id; localStorage.setItem('blip_skin',sk.id); refreshCoinUI(); renderShop(); toast('Skin débloqué ✨');
+        }; }
+      row.appendChild(btn);
+      host.appendChild(row);
+    });
+  }
+
+  /* ---------- récompense quotidienne (streak de connexion, 7 jours) ---------- */
+  function checkDailyReward(){
+    var today=new Date().toISOString().slice(0,10);
+    var last=load('blip_daily_last',null);
+    var streak=load('blip_daily_streak',0);
+    if(last===today) return;
+    if(last){ var y=new Date(); y.setDate(y.getDate()-1); var yISO=y.toISOString().slice(0,10); streak=(last===yISO)?streak+1:1; }
+    else streak=1;
+    streak=((streak-1)%7)+1;
+    var reward=10+streak*5;
+    $('dailyCoins').textContent='+'+reward+' 🪙';
+    $('dailySub').textContent='Jour '+streak+' de suite !';
+    var dots=''; for(var i=1;i<=7;i++) dots+=(i<=streak?'●':'○')+' ';
+    $('dailyStreakDots').textContent=dots.trim();
+    $('dailyOv').classList.add('show');
+    $('dailyClaim').onclick=function(){
+      coinsTotal+=reward; localStorage.setItem('blip_coins',JSON.stringify(coinsTotal)); refreshCoinUI();
+      localStorage.setItem('blip_daily_last',today);
+      localStorage.setItem('blip_daily_streak',String(streak));
+      $('dailyOv').classList.remove('show');
+    };
+  }
 
   /* ---------- audio ---------- */
   var actx=null, soundOn=true;
@@ -184,22 +278,29 @@
   function onInterClosed(){ interReady=false; prepInter(); adOpen=false; var a=pendingAfter; pendingAfter=null; if(a)a(); }
   function onRewardClosed(){ adOpen=false; rewardReady=false; prepReward(); var cb=pendingReward; pendingReward=null; var g=rewardGranted; rewardGranted=false;
     if(cb && g){ cb(); } else if(cb){ $('deadOv').classList.add('show'); } }   // pas regardé jusqu'au bout → pas de revive
-  function onRewardFail(){ adOpen=false; var cb=pendingReward; pendingReward=null; if(cb) houseAd(cb); }
+  function onRewardFail(){ adOpen=false; var cb=pendingReward; pendingReward=null; if(cb) houseAd(cb,true); }
   function showInterstitial(after){
     if(noAds){ after&&after(); return; }
     if(AdMob && interReady){ pendingAfter=after; adOpen=true; AdMob.showInterstitial().catch(function(){ onInterClosed(); }); }
     else houseAd(after);
   }
-  function showRewarded(cb){
-    if(noAds){ cb&&cb(); return; }
-    if(AdMob && rewardReady){ pendingReward=cb; rewardGranted=false; adOpen=true; AdMob.showRewardVideoAd().catch(function(){ adOpen=false; pendingReward=null; houseAd(cb); }); }
-    else houseAd(cb);   // repli web / no-fill : house-ad puis on accorde
+  /* pub récompensée : placeholder web tant que @capacitor-community/admob n'est pas branché en natif.
+     Sert au "Continuer après un crash" (reviveBtn), à "Doubler mes pièces" (doubleCoinsBtn) et à la boutique (+20). */
+  function showRewardedAd(cb){
+    if(noAds){ cb&&cb(); return; }   // Pro : bonus offert sans pub
+    if(AdMob && rewardReady){ pendingReward=cb; rewardGranted=false; adOpen=true; AdMob.showRewardVideoAd().catch(function(){ adOpen=false; pendingReward=null; houseAd(cb,true); }); }
+    else houseAd(cb,true);   // repli web / no-fill : accorde la récompense directement (pub vidéo bientôt via l'app)
   }
   function showMenuBanner(){ if(!AdMob || noAds || bannerShown) return; bannerShown=true;
     AdMob.showBanner({adId:AD_BANNER,adSize:'ADAPTIVE_BANNER',position:'BOTTOM_CENTER',margin:0,isTesting:true}).catch(function(){}); }
   function hideMenuBanner(){ if(!AdMob || !bannerShown) return; bannerShown=false; try{AdMob.hideBanner();}catch(e){} }
-  function buyPremium(){ if(noAds) return; /* Google Play Billing à brancher à la publication */ }
-  function applyPremium(){ noAds=1; localStorage.setItem('blip_premium','1'); hideMenuBanner(); try{AdMob&&AdMob.removeBanner();}catch(e){} }
+  function buyPremium(){
+    if(noAds){ toast('Tu es déjà sans pub ✨'); return; }
+    // TODO : brancher Google Play Billing (produit "remove_ads") une fois le compte Play créé
+    toast('Bientôt : achat "sans pub" via le Play Store ✨');
+  }
+  function applyPremium(){ noAds=1; localStorage.setItem('blip_premium','1'); hideMenuBanner(); try{AdMob&&AdMob.removeBanner();}catch(e){}
+    document.body.classList.add('noads'); var pb=$('premBtn'); if(pb) pb.style.display='none'; renderShop(); toast('Merci ! Pubs supprimées ✨'); }
 
   /* pub temporisée : une pub (~5 s) toutes les 30 min — non intrusive : jamais pendant une partie active, seulement sur menu ou écran de fin */
   var timeAdDue=false;
@@ -212,10 +313,11 @@
 
   /* ---------- house-ad (repli) ---------- */
   var adOpen=false;
-  function houseAd(after){ adOpen=true;
+  function houseAd(after,isReward){ adOpen=true;
     var p=PROMOS[Math.floor(Math.random()*PROMOS.length)];
     $('promo').innerHTML='<div class="emo">'+p.emo+'</div><div><h3>'+p.h+'</h3><p>'+p.p+'</p>'+
-      '<a href="'+p.u+'" target="_blank" rel="noopener">Découvrir →</a></div>';
+      '<a href="'+p.u+'" target="_blank" rel="noopener">Découvrir →</a></div>'+
+      (isReward?'<div style="font-size:11px;color:#5a6a94;margin-top:8px">🎬 vraie pub vidéo bientôt via l\'app — récompense offerte en attendant</div>':'');
     var n=5; $('adCount').textContent=n; var b=$('adContinue'); b.disabled=true; b.firstChild.nodeValue='Continuer dans ';
     $('deadOv').classList.remove('show'); $('adOv').classList.add('show');
     var iv=setInterval(function(){ n--; if(n<=0){ clearInterval(iv); b.disabled=false; b.textContent='Continuer ▶'; } else $('adCount').textContent=n; },1000);
@@ -248,7 +350,7 @@
   function reset(){ tune();
     orb={x:ORBX,y:H*0.42,vy:0,rot:0};
     pillars=[]; coins=[]; particles=[]; ambient=[]; trail=[]; shake=0; score=0; spawnT=SPAWN*0.6;
-    revived=false; lastTier=0; flash=0; labelT=0; coinsRun=0; pillarN=0;
+    revived=false; coinsDoubled=false; lastTier=0; flash=0; labelT=0; coinsRun=0; pillarN=0;
     $('score').textContent='0'; $('coinHud').textContent='🪙 0';
   }
   function beginPlay(keepScore){
@@ -262,7 +364,9 @@
   }
 
   /* ---------- input (robuste : tout l'écran, sauf boutons) ---------- */
-  function tap(){ ac();
+  function tap(){
+    if($('premOv').classList.contains('show') || $('shopOv').classList.contains('show') || $('dailyOv').classList.contains('show') || $('adOv').classList.contains('show')) return;
+    ac();
     if(state==='ready'){ beginPlay(false); }
     else if(state==='play'){ flap(); }
     else if(state==='dead'){ if(!adOpen && deadReady) retry(); }
@@ -296,6 +400,8 @@
     $('coins0').textContent=coinsTotal;
     $('newBest').style.display=nb?'block':'none';
     $('reviveBtn').style.display=(revived||noAds)?'none':'block';   // 1 seul revive/partie ; premium = pas de pub à regarder
+    var db=$('doubleCoinsBtn'); if(db) db.style.display=(coinsRun>0 && !noAds)?'block':'none';
+    $('doubleAmt').textContent=coinsRun;
     $('score').style.display='none'; $('coinHud').style.display='none'; deadReady=false;
     setTimeout(function(){ $('deadOv').classList.add('show'); showMenuBanner(); deadReady=true; tryTimeAd(); }, 500);
   }
@@ -463,9 +569,10 @@
   }
   function drawOrb(th){
     ctx.save(); ctx.translate(orb.x,orb.y); ctx.rotate(orb.rot);
+    var oc=orbColors(th);
     ctx.shadowColor=th.rim; ctx.shadowBlur=26;
     var rg=ctx.createRadialGradient(-ORBR*0.3,-ORBR*0.3,ORBR*0.2,0,0,ORBR);
-    rg.addColorStop(0,th.orb[0]); rg.addColorStop(.5,th.orb[1]); rg.addColorStop(1,th.orb[2]);
+    rg.addColorStop(0,oc[0]); rg.addColorStop(.5,oc[1]); rg.addColorStop(1,oc[2]);
     ctx.fillStyle=rg; ctx.beginPath(); ctx.arc(0,0,ORBR,0,7); ctx.fill();
     ctx.shadowBlur=0; ctx.fillStyle='rgba(255,255,255,.85)';
     ctx.beginPath(); ctx.arc(-ORBR*0.32,-ORBR*0.32,ORBR*0.26,0,7); ctx.fill();
@@ -518,22 +625,32 @@
   /* ---------- boutons ---------- */
   $('startBtn').addEventListener('click',function(e){ e.stopPropagation(); ac(); beginPlay(false); });
   $('retryBtn').addEventListener('click',function(e){ e.stopPropagation(); ac(); retry(); });
-  $('reviveBtn').addEventListener('click',function(e){ e.stopPropagation(); if(adOpen)return; ac(); showRewarded(doRevive); });
+  $('reviveBtn').addEventListener('click',function(e){ e.stopPropagation(); if(adOpen)return; ac(); showRewardedAd(doRevive); });
+  $('doubleCoinsBtn').addEventListener('click',function(e){ e.stopPropagation(); if(adOpen||coinsDoubled||coinsRun<=0)return; ac();
+    showRewardedAd(function(){ coinsDoubled=true; coinsTotal+=coinsRun; localStorage.setItem('blip_coins',JSON.stringify(coinsTotal));
+      $('coinsRunEl').textContent='+'+(coinsRun*2); $('coins0').textContent=coinsTotal; $('doubleCoinsBtn').style.display='none'; toast('Pièces doublées 🪙✨'); });
+  });
   $('shareBtn').addEventListener('click',function(e){ e.stopPropagation(); shareCard(); });
   $('premBtn').addEventListener('click',function(e){ e.stopPropagation(); $('premOv').classList.add('show'); });
   $('premClose').addEventListener('click',function(e){ e.stopPropagation(); $('premOv').classList.remove('show'); });
   $('premBuy').addEventListener('click',function(e){ e.stopPropagation(); $('premOv').classList.remove('show'); buyPremium(); });
+  $('shopBtn').addEventListener('click',function(e){ e.stopPropagation(); ac(); refreshCoinUI(); renderShop(); $('shopOv').classList.add('show'); });
+  $('shopClose').addEventListener('click',function(e){ e.stopPropagation(); $('shopOv').classList.remove('show'); });
+  $('shopAdBtn').addEventListener('click',function(e){ e.stopPropagation(); if(adOpen)return; ac();
+    showRewardedAd(function(){ coinsTotal+=20; localStorage.setItem('blip_coins',JSON.stringify(coinsTotal)); refreshCoinUI(); renderShop(); toast('+20 🪙'); }); });
 
   /* ---------- boot ---------- */
   resize();
   $('best0').textContent=best;
   $('coins0').textContent=coinsTotal;
   reset(); state='ready';
-  if(noAds){ var pb=$('premBtn'); if(pb) pb.style.display='none'; }
+  if(noAds){ var pb=$('premBtn'); if(pb) pb.style.display='none'; document.body.classList.add('noads'); }
   if(isNative){
     document.body.classList.add('native');
     if(Cap.Plugins && Cap.Plugins.App){
       Cap.Plugins.App.addListener('backButton', function(){
+        if($('shopOv').classList.contains('show')){ $('shopOv').classList.remove('show'); return; }
+        if($('dailyOv').classList.contains('show')){ return; }   // récompense à réclamer avant de fermer
         if($('premOv').classList.contains('show')){ $('premOv').classList.remove('show'); return; }
         if(state==='play'){ die(); return; }
         try{ Cap.Plugins.App.minimizeApp(); }catch(e){ try{Cap.Plugins.App.exitApp();}catch(e2){} }
@@ -542,6 +659,7 @@
   }
   adInit();
   requestAnimationFrame(frame);
+  checkDailyReward();
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(function(){}); }
 })();
 </script>
