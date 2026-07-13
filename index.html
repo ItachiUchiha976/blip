@@ -261,7 +261,7 @@
   var AD_INTER='ca-app-pub-3940256099942544/1033173712';      // TEST
   var AD_REWARD='ca-app-pub-3940256099942544/5224354917';     // TEST rewarded
   var interReady=false, rewardReady=false, bannerShown=false;
-  var pendingAfter=null, pendingReward=null, rewardGranted=false;
+  var pendingAfter=null, pendingReward=null, rewardGranted=false, rewardContext=null;
   function adInit(){
     if(!AdMob || noAds) return;
     AdMob.initialize({initializeForTesting:true}).then(function(){
@@ -276,9 +276,9 @@
   function prepInter(){ if(!AdMob)return; AdMob.prepareInterstitial({adId:AD_INTER,isTesting:true}).then(function(){interReady=true;}).catch(function(){interReady=false;}); }
   function prepReward(){ if(!AdMob)return; AdMob.prepareRewardVideoAd({adId:AD_REWARD,isTesting:true}).then(function(){rewardReady=true;}).catch(function(){rewardReady=false;}); }
   function onInterClosed(){ interReady=false; prepInter(); adOpen=false; var a=pendingAfter; pendingAfter=null; if(a)a(); }
-  function onRewardClosed(){ adOpen=false; rewardReady=false; prepReward(); var cb=pendingReward; pendingReward=null; var g=rewardGranted; rewardGranted=false;
-    if(cb && g){ cb(); } else if(cb){ $('deadOv').classList.add('show'); } }   // pas regardé jusqu'au bout → pas de revive
-  function onRewardFail(){ adOpen=false; var cb=pendingReward; pendingReward=null; if(cb) houseAd(cb,true); }
+  function onRewardClosed(){ adOpen=false; rewardReady=false; prepReward(); var cb=pendingReward; pendingReward=null; var g=rewardGranted; rewardGranted=false; var ctx=rewardContext; rewardContext=null;
+    if(cb && g){ cb(); } else if(cb && ctx==='revive'){ $('deadOv').classList.add('show'); } }   // pas regardé jusqu'au bout → écran de mort uniquement si la pub venait du revive (pas boutique/double)
+  function onRewardFail(){ adOpen=false; var cb=pendingReward; pendingReward=null; rewardContext=null; if(cb) houseAd(cb,true); }
   function showInterstitial(after){
     if(noAds){ after&&after(); return; }
     if(AdMob && interReady){ pendingAfter=after; adOpen=true; AdMob.showInterstitial().catch(function(){ onInterClosed(); }); }
@@ -286,7 +286,8 @@
   }
   /* pub récompensée : placeholder web tant que @capacitor-community/admob n'est pas branché en natif.
      Sert au "Continuer après un crash" (reviveBtn), à "Doubler mes pièces" (doubleCoinsBtn) et à la boutique (+20). */
-  function showRewardedAd(cb){
+  function showRewardedAd(cb,ctx){
+    rewardContext=ctx||'revive';
     if(noAds){ cb&&cb(); return; }   // Pro : bonus offert sans pub
     if(AdMob && rewardReady){ pendingReward=cb; rewardGranted=false; adOpen=true; AdMob.showRewardVideoAd().catch(function(){ adOpen=false; pendingReward=null; houseAd(cb,true); }); }
     else houseAd(cb,true);   // repli web / no-fill : accorde la récompense directement (pub vidéo bientôt via l'app)
@@ -625,10 +626,10 @@
   /* ---------- boutons ---------- */
   $('startBtn').addEventListener('click',function(e){ e.stopPropagation(); ac(); beginPlay(false); });
   $('retryBtn').addEventListener('click',function(e){ e.stopPropagation(); ac(); retry(); });
-  $('reviveBtn').addEventListener('click',function(e){ e.stopPropagation(); if(adOpen)return; ac(); showRewardedAd(doRevive); });
+  $('reviveBtn').addEventListener('click',function(e){ e.stopPropagation(); if(adOpen)return; ac(); showRewardedAd(doRevive,'revive'); });
   $('doubleCoinsBtn').addEventListener('click',function(e){ e.stopPropagation(); if(adOpen||coinsDoubled||coinsRun<=0)return; ac();
     showRewardedAd(function(){ coinsDoubled=true; coinsTotal+=coinsRun; localStorage.setItem('blip_coins',JSON.stringify(coinsTotal));
-      $('coinsRunEl').textContent='+'+(coinsRun*2); $('coins0').textContent=coinsTotal; $('doubleCoinsBtn').style.display='none'; toast('Pièces doublées 🪙✨'); });
+      $('coinsRunEl').textContent='+'+(coinsRun*2); $('coins0').textContent=coinsTotal; $('doubleCoinsBtn').style.display='none'; toast('Pièces doublées 🪙✨'); },'double');
   });
   $('shareBtn').addEventListener('click',function(e){ e.stopPropagation(); shareCard(); });
   $('premBtn').addEventListener('click',function(e){ e.stopPropagation(); $('premOv').classList.add('show'); });
@@ -637,7 +638,7 @@
   $('shopBtn').addEventListener('click',function(e){ e.stopPropagation(); ac(); refreshCoinUI(); renderShop(); $('shopOv').classList.add('show'); });
   $('shopClose').addEventListener('click',function(e){ e.stopPropagation(); $('shopOv').classList.remove('show'); });
   $('shopAdBtn').addEventListener('click',function(e){ e.stopPropagation(); if(adOpen)return; ac();
-    showRewardedAd(function(){ coinsTotal+=20; localStorage.setItem('blip_coins',JSON.stringify(coinsTotal)); refreshCoinUI(); renderShop(); toast('+20 🪙'); }); });
+    showRewardedAd(function(){ coinsTotal+=20; localStorage.setItem('blip_coins',JSON.stringify(coinsTotal)); refreshCoinUI(); renderShop(); toast('+20 🪙'); },'shop'); });
 
   /* ---------- boot ---------- */
   resize();
